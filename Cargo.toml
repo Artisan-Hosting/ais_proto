@@ -1,0 +1,18 @@
+[package]
+name = "ais_proto"
+version = "0.1.0"
+edition = "2021"
+description = "Shared .proto files for the platform's internal gRPC APIs, plus the wire-format pin tests that stop them drifting."
+publish = false
+
+# This package exists for its tests. Consumers do NOT depend on it: each crate
+# keeps its own tonic/prost toolchain and compiles the .proto text directly from
+# this directory in its own build.rs (see e.g. ais_secretserver/build.rs). Only
+# the .proto files are shared, never generated bindings.
+
+[dependencies]
+prost = "0.12"
+prost-types = "0.12"
+
+[build-dependencies]
+prost-build = "0.12"

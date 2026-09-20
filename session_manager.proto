@@ -1,0 +1,410 @@
+syntax = "proto3";
+
+package session_manager;
+
+// Session Manager service definition
+service SessionManager {
+  // Deploy a template and create a session
+  rpc DeployTemplate(DeployTemplateRequest) returns (DeployTemplateResponse);
+  
+  // Get session information
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
+  
+  // Signal that resources are free for reuse
+  rpc SignalFreeResources(SignalFreeResourcesRequest) returns (SignalFreeResourcesResponse);
+  
+  // Send a heartbeat signal for health monitoring
+  rpc SendHeartbeat(SendHeartbeatRequest) returns (SendHeartbeatResponse);
+  
+  // Terminate a session
+  rpc TerminateSession(TerminateSessionRequest) returns (TerminateSessionResponse);
+  
+  // List all sessions
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+  // Retrieve persisted logs for a session
+  rpc GetSessionLogs(GetSessionLogsRequest) returns (GetSessionLogsResponse);
+
+  // Retrieve command queue and sync metrics
+  rpc GetCommandMetrics(GetCommandMetricsRequest) returns (GetCommandMetricsResponse);
+
+  // Retrieve deployment progress for a session
+  rpc GetDeployStatus(GetDeployStatusRequest) returns (GetDeployStatusResponse);
+
+  // Report a heartbeat failure for proactive resource management
+  rpc ReportHeartbeatFailure(ReportHeartbeatFailureRequest) returns (ReportHeartbeatFailureResponse);
+}
+
+// Request to deploy a workload from template or image
+message DeployTemplateRequest {
+  reserved 2, 6;
+
+  // Optional provider template identifier.
+  optional string template_id = 1;
+  // Optional placement selector (for example, data center ID or country code).
+  optional string region = 3;
+  // Optional JSON object string merged into session metadata.
+  optional string custom_metadata = 4;
+  // Required applet/workload identifier.
+  string applet_id = 5;
+  // Optional direct image override for image-based deploys.
+  optional string image_name = 7;
+  // Non-sensitive runtime environment variables.
+  map<string, string> env = 8;
+  // Secret references (not raw secret values) keyed by environment variable name.
+  map<string, string> secret_refs = 9;
+  // Target backend provider identifier (for example: runpod, vastai).
+  optional string backend = 10;
+  // Provider-specific options scoped by backend convention.
+  map<string, string> backend_options = 11;
+  // Backend-agnostic persistent storage contract.
+  optional DeployStorage storage = 12;
+  // Optional reuse tag that enables orphan-session reattachment for matching applets.
+  optional string orphan_reuse_tag = 13;
+  // Optional requested GPU count override (for example: 1, 2, 4).
+  optional uint32 gpu_count = 14;
+  // Optional target minimum VRAM in GB for automatic cost optimization (for example: 64).
+  optional uint32 target_vram_gb = 15;
+  // Optional GPU allocation mode ("exact" or "cheapest").
+  optional string gpu_allocation_mode = 16;
+  // Optional requested persistent volume size in GB (default: 50 if unset).
+  optional uint32 volume_gb = 17;
+  // Optional requested container disk size in GB (default: 50 if unset).
+  optional uint32 container_disk_gb = 18;
+  // RBAC Phase 4. Authenticates the caller (user JWT).
+  string access_token = 19;
+  // RBAC Phase 4. Authenticates a non-human caller (e.g. one Kaelum).
+  string service_credential = 20;
+  // RBAC Phase 4. Owning project of the session; caller needs Control on it.
+  // Field 2 is `reserved` above and must never be reused.
+  string project_id = 21;
+}
+
+// Provider-agnostic storage mode for runtime workloads.
+enum StorageMode {
+  STORAGE_MODE_UNSPECIFIED = 0;
+  STORAGE_MODE_NONE = 1;
+  STORAGE_MODE_MOUNTED = 2;
+  STORAGE_MODE_S3 = 3;
+}
+
+// S3-compatible object storage configuration.
+message S3StorageConfig {
+  // S3 endpoint URL (for example https://s3.us-east-1.amazonaws.com).
+  optional string endpoint = 1;
+  // Bucket name.
+  optional string bucket = 2;
+  // Region identifier.
+  optional string region = 3;
+  // Optional object key prefix.
+  optional string prefix = 4;
+  // Optional path-style access toggle.
+  optional bool path_style = 5;
+}
+
+// Normalized storage settings provided at deploy time.
+message DeployStorage {
+  // Desired storage mode.
+  StorageMode mode = 1;
+  // Canonical root path expected by the workload.
+  optional string root_path = 2;
+  // Mounted path when using mounted mode.
+  optional string mount_path = 3;
+  // Mounted filesystem read-only flag.
+  optional bool read_only = 4;
+  // Optional provider-specific volume identifier.
+  optional string provider_volume_id = 5;
+  // S3 settings when mode is STORAGE_MODE_S3.
+  optional S3StorageConfig s3 = 6;
+}
+
+// Response after template deployment
+message DeployTemplateResponse {
+  string session_id = 1;
+  string tailscale_address = 2;
+  optional HeartbeatRules heartbeat_rules = 3;
+  optional string runpod_pod_id = 4;
+  int64 created_at = 5;
+  optional string pod_name = 6;
+  uint32 generation_id = 7;
+  bool reused_orphan = 8;
+}
+
+// Request to get session information
+message GetSessionRequest {
+  string session_id = 1;
+  // RBAC Phase 4 -- one of these two is required.
+  string access_token = 2;
+  string service_credential = 3;
+}
+
+// Response with session information
+message GetSessionResponse {
+  Session session = 1;
+}
+
+// Request to signal free resources
+message SignalFreeResourcesRequest {
+  string session_id = 1;
+}
+
+// Response for free resources signal
+message SignalFreeResourcesResponse {
+  bool success = 1;
+}
+
+// Request to send heartbeat
+message SendHeartbeatRequest {
+  string session_id = 1;
+  optional ResourceUtilization resource_utilization = 2;
+  optional string status = 3;
+}
+
+// Response for heartbeat
+message SendHeartbeatResponse {
+  bool success = 1;
+  optional string message = 2;
+}
+
+// Request to terminate session
+message TerminateSessionRequest {
+  string session_id = 1;
+  bool force = 2;
+  // RBAC Phase 4 -- one of these two is required.
+  string access_token = 3;
+  string service_credential = 4;
+}
+
+// Response for session termination
+message TerminateSessionResponse {
+  bool success = 1;
+  optional string message = 2;
+}
+
+// Request to list sessions
+message ListSessionsRequest {
+  optional string template_id = 1;
+  optional SessionStatus status = 2;
+  optional int32 page = 3;
+  optional int32 page_size = 4;
+  // RBAC Phase 4 -- one of these two is required. Results are scoped: a user
+  // sees their own organization's sessions (Super sees all); a service
+  // credential sees its own organization's (a Super-issued GLOBAL infra
+  // credential, e.g. portal's poller, sees all).
+  string access_token = 5;
+  string service_credential = 6;
+}
+
+// Response for listing sessions
+message ListSessionsResponse {
+  repeated Session sessions = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+// Request to fetch logs for a session
+message GetSessionLogsRequest {
+  string session_id = 1;
+  optional int32 limit = 2;
+  // RBAC Phase 4 -- one of these two is required (needs Read on the session).
+  string access_token = 3;
+  string service_credential = 4;
+}
+
+// A persisted session log line
+message SessionLogEntry {
+  int64 id = 1;
+  string session_id = 2;
+  optional string pod_id = 3;
+  int64 log_timestamp = 4;
+  string log_line = 5;
+  string line_hash = 6;
+  int64 created_at = 7;
+}
+
+// Response with session log lines
+message GetSessionLogsResponse {
+  repeated SessionLogEntry logs = 1;
+  int64 total = 2;
+}
+
+// Request for command metrics snapshot
+message GetCommandMetricsRequest {}
+
+// Queue depth metric by command type
+message CommandTypeMetric {
+  string command_type = 1;
+  int64 queued = 2;
+}
+
+// Response with command queue and sync metrics
+message GetCommandMetricsResponse {
+  int64 timestamp = 1;
+  int64 queue_depth = 2;
+  int64 expired_queue_depth = 3;
+  int64 active_sessions = 4;
+  int64 buffered_log_sessions = 5;
+  int64 buffered_log_lines = 6;
+  int64 persisted_log_rows = 7;
+  repeated CommandTypeMetric command_type_metrics = 8;
+}
+
+// Request deployment progress for a session.
+message GetDeployStatusRequest {
+  string session_id = 1;
+  // RBAC Phase 4 -- one of these two is required (needs Read on the session).
+  string access_token = 2;
+  string service_credential = 3;
+}
+
+// Session deployment progress state.
+enum DeployStatus {
+  DEPLOY_STATUS_UNSPECIFIED = 0;
+  DEPLOY_STATUS_NOT_FOUND = 1;
+  DEPLOY_STATUS_QUEUED = 2;
+  DEPLOY_STATUS_IN_PROGRESS = 3;
+  DEPLOY_STATUS_ACTIVE = 4;
+  DEPLOY_STATUS_ERROR = 5;
+  DEPLOY_STATUS_STOPPED = 6;
+}
+
+// Deployment progress details for a session.
+message GetDeployStatusResponse {
+  string session_id = 1;
+  DeployStatus status = 2;
+  bool command_queued = 3;
+  int64 queued_attempt = 4;
+  optional string runpod_pod_id = 5;
+  optional string pod_name = 6;
+  optional string last_error = 7;
+  int64 updated_at = 8;
+}
+
+// Session message
+message Session {
+  string id = 1;
+  string template_id = 2;
+  SessionStatus status = 3;
+  int64 created_at = 4;
+  int64 updated_at = 5;
+  optional string runpod_pod_id = 6;
+  optional string tailscale_address = 7;
+  optional HeartbeatRules heartbeat_rules = 8;
+  Resources resources = 9;
+  optional HealthStatus health_status = 10;
+  optional BillingInfo billing_info = 11;
+  bool archived = 12;
+  optional SessionMetadata metadata = 13;
+  optional string pod_name = 14;
+  uint32 generation_id = 15;
+  optional string orphan_reuse_tag = 16;
+  optional int64 orphan_expires_at = 17;
+}
+
+// Resources message
+message Resources {
+  int32 cpu = 1;
+  int32 memory = 2;
+  int32 gpu = 3;
+  string region = 4;
+  optional string gpu_type = 5;
+  optional int32 volume_storage = 6;
+}
+
+// Heartbeat rules message
+message HeartbeatRules {
+  int32 interval_seconds = 1;
+  int32 timeout_seconds = 2;
+  int32 max_misses = 3;
+}
+
+// Health status message
+message HealthStatus {
+  bool is_healthy = 1;
+  int64 last_heartbeat = 2;
+  int64 last_check = 3;
+  optional string status_details = 4;
+  optional ResourceUtilization resource_utilization = 5;
+}
+
+// Resource utilization message
+message ResourceUtilization {
+  float cpu_percent = 1;
+  float memory_percent = 2;
+  float gpu_percent = 3;
+  optional float network_utilization = 4;
+  optional float disk_utilization = 5;
+}
+
+// Billing info message
+message BillingInfo {
+  double cost_per_hour = 1;
+  double total_cost = 2;
+  int64 start_time = 3;
+  optional int64 end_time = 4;
+  UsageStats usage_stats = 5;
+  optional double credits_used = 6;
+}
+
+// Usage stats message
+message UsageStats {
+  int64 total_duration_seconds = 1;
+  int64 cpu_seconds = 2;
+  int64 memory_gb_seconds = 3;
+  int64 gpu_seconds = 4;
+  int64 disk_gb_seconds = 5;
+}
+
+// Session metadata message
+message SessionMetadata {
+  optional string applet_id = 1;
+  optional string deployment_template = 2;
+  map<string, string> custom_properties = 3;
+  optional string user_id = 4;
+  optional string project_id = 5;
+}
+
+// Template message
+message Template {
+  string id = 1;
+  string name = 2;
+  optional string description = 3;
+  Resources resources = 4;
+  double price_per_hour = 5;
+  repeated string available_regions = 6;
+  repeated string tags = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+  bool is_public = 10;
+  optional string author = 11;
+  optional string version = 12;
+  map<string, string> requirements = 13;
+}
+
+// Session status enum
+enum SessionStatus {
+  SESSION_STATUS_UNSPECIFIED = 0;
+  SESSION_STATUS_PENDING = 1;
+  SESSION_STATUS_ACTIVE = 2;
+  SESSION_STATUS_STOPPING = 3;
+  SESSION_STATUS_STOPPED = 4;
+  SESSION_STATUS_ERROR = 5;
+  SESSION_STATUS_ARCHIVED = 6;
+}
+
+// Request to report a heartbeat failure
+message ReportHeartbeatFailureRequest {
+  string session_id = 1;
+  int32 consecutive_failures = 2;
+  optional string last_error = 3;
+}
+
+// Response for heartbeat failure report
+message ReportHeartbeatFailureResponse {
+  bool success = 1;
+}
+
+// This import is needed for the custom properties
+// Removed the import since it's not available in all environments
+// Using string-based map values instead
