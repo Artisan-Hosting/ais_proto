@@ -66,6 +66,21 @@ service AccountInternal {
   rpc IssueServiceCredential(IssueServiceCredentialRequest) returns (IssueServiceCredentialResponse);
   rpc ValidateServiceCredential(ValidateServiceCredentialRequest) returns (ValidateServiceCredentialResponse);
 
+  // RBAC Phase 5: on-demand, mTLS-minted service session tokens (GLOBAL org
+  // platform-infra only -- Manager, watchdog, gitmon). RequestServiceSession
+  // carries no credential field at all: the caller's mTLS client certificate
+  // (already required by the transport layer) *is* the credential, and the
+  // service name it authenticates as comes from that certificate's SAN/CN,
+  // not from anything the caller types into the request. Short TTL (fixed,
+  // v1 ignores requested_ttl_secs), and unlike every other token type here,
+  // validating one also re-checks live revocation, not signature+expiry
+  // alone -- an admin revoking a service kills its already-minted tokens
+  // immediately. ResolveServiceIdentity lets an admin learn/create a
+  // service's stable credential_id (to grant it permissions) without that
+  // service ever having called in yet.
+  rpc RequestServiceSession(RequestServiceSessionRequest) returns (RequestServiceSessionResponse);
+  rpc ResolveServiceIdentity(ResolveServiceIdentityRequest) returns (ResolveServiceIdentityResponse);
+
   // RBAC Phase 3/4: the service-credential equivalent of EvaluateAccess. The
   // caller presents a raw service credential (not a JWT); ais_auth validates
   // it and decides against resource_grants keyed by the credential's id.
@@ -159,3 +174,10 @@ message EvaluateServiceAccessRequest { string raw_credential = 1; string resourc
 // service_name / credential_id are only populated when the credential itself was
 // valid (even if the grant check then said no), so the caller can audit who asked.
 message EvaluateServiceAccessResponse { bool yes = 1; string service_name = 2; string credential_id = 3; }
+
+// RBAC Phase 5: mTLS-minted service session tokens.
+message RequestServiceSessionRequest { int64 requested_ttl_secs = 1; } // v1: ignored, server always issues a fixed TTL
+message RequestServiceSessionResponse { string session_token = 1; int64 expires_in = 2; string credential_id = 3; }
+
+message ResolveServiceIdentityRequest { string elevated_token = 1; string organization_id = 2; string service_name = 3; }
+message ResolveServiceIdentityResponse { string credential_id = 1; }
