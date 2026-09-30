@@ -10,6 +10,13 @@ pub mod session_manager {
 pub mod accounts {
     include!(concat!(env!("OUT_DIR"), "/accounts.rs"));
 }
+pub mod billing {
+    include!(concat!(env!("OUT_DIR"), "/billing.rs"));
+}
 
-/// The compiled descriptor set of all three files.
+pub mod domains {
+    include!(concat!(env!("OUT_DIR"), "/domains.rs"));
+}
+
+/// The compiled descriptor set of all five files.
 pub const DESCRIPTOR_SET: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/descriptor.bin"));

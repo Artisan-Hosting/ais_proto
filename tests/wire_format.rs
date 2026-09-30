@@ -18,6 +18,8 @@
 //! 0 = varint), deliberately NOT produced by the code under test.
 
 use ais_proto::accounts as acc;
+use ais_proto::billing as bl;
+use ais_proto::domains as dom;
 use ais_proto::secret_service as sec;
 use ais_proto::session_manager as sm;
 use prost::Message;
@@ -238,6 +240,120 @@ fn existing_evaluate_access_and_permission_messages_are_unchanged() {
 }
 
 // ---------------------------------------------------------------------------
+// billing.proto (BillingAdminService -- plans, subscriptions, invoices, and
+// the GPU/LLM prepaid credit ledger)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn create_or_upgrade_subscription_request_fields_are_pinned() {
+    // access_token=1, organization_id=2, storefront=3, plan_code=4,
+    // elevated_token=5 -- the field this RPC's whole AUTHZ bar rests on.
+    let req = bl::CreateOrUpgradeSubscriptionRequest {
+        access_token: "t".into(),
+        organization_id: "o".into(),
+        storefront: "developer".into(),
+        plan_code: "dev_pro".into(),
+        elevated_token: "e".into(),
+    };
+    assert_eq!(
+        req.encode_to_vec(),
+        cat(&[s(0x0a, "t"), s(0x12, "o"), s(0x1a, "developer"), s(0x22, "dev_pro"), s(0x2a, "e")])
+    );
+}
+
+#[test]
+fn top_up_credit_request_fields_are_pinned() {
+    // access_token=1, organization_id=2, amount_cents=3(varint), currency=4,
+    // elevated_token=5.
+    let req = bl::TopUpCreditRequest {
+        access_token: "t".into(),
+        organization_id: "o".into(),
+        amount_cents: 2500,
+        currency: "usd".into(),
+        elevated_token: "e".into(),
+    };
+    assert_eq!(
+        req.encode_to_vec(),
+        cat(&[s(0x0a, "t"), s(0x12, "o"), vec![0x18, 0xc4, 0x13], s(0x22, "usd"), s(0x2a, "e")])
+    );
+}
+
+#[test]
+fn debit_credit_request_carries_no_end_user_token() {
+    // Internal-only RPC: organization_id=1, amount_cents=2(varint),
+    // external_reference=3, idempotency_key=4 -- deliberately no
+    // access_token/elevated_token field exists on this message at all
+    // (see billing.proto's own comment on why -- mTLS-authenticated callers
+    // only, matching BillingService's original internal RPCs).
+    let req = bl::DebitCreditRequest {
+        organization_id: "o".into(),
+        amount_cents: 42,
+        external_reference: "session-1".into(),
+        idempotency_key: "session-1:7".into(),
+    };
+    assert_eq!(
+        req.encode_to_vec(),
+        cat(&[s(0x0a, "o"), vec![0x10, 42], s(0x1a, "session-1"), s(0x22, "session-1:7")])
+    );
+}
+
+#[test]
+fn billing_status_enum_discriminants_are_pinned() {
+    // The wire value IS the meaning -- reordering these variants would
+    // silently reinterpret every stored subscriptions.status row and every
+    // value already on the wire.
+    assert_eq!(bl::BillingStatus::Unspecified as i32, 0);
+    assert_eq!(bl::BillingStatus::Active as i32, 1);
+    assert_eq!(bl::BillingStatus::PastDue as i32, 2);
+    assert_eq!(bl::BillingStatus::GracePeriod as i32, 3);
+    assert_eq!(bl::BillingStatus::Suspended as i32, 4);
+    assert_eq!(bl::BillingStatus::Deleted as i32, 5);
+}
+
+#[test]
+fn subscription_message_fields_are_pinned() {
+    let sub = bl::Subscription {
+        id: "1".into(),
+        organization_id: "o".into(),
+        storefront: "developer".into(),
+        plan_code: "dev_pro".into(),
+        status: bl::BillingStatus::Active as i32,
+        current_period_start: 100,
+        current_period_end: 200,
+        pending_plan_code: "".into(),
+        cancel_at_period_end: false,
+        created_at: 100,
+        updated_at: 100,
+    };
+    // id=1, organization_id=2, storefront=3, plan_code=4, status=5(varint),
+    // current_period_start=6(varint), current_period_end=7(varint),
+    // created_at=10(varint), updated_at=11(varint). Default-valued
+    // pending_plan_code/cancel_at_period_end (proto3 defaults) are omitted
+    // from the wire entirely, not encoded as empty/false.
+    assert_eq!(
+        sub.encode_to_vec(),
+        cat(&[
+            s(0x0a, "1"),
+            s(0x12, "o"),
+            s(0x1a, "developer"),
+            s(0x22, "dev_pro"),
+            vec![0x28, 1],
+            vec![0x30, 100],
+            vec![0x38, 0xc8, 0x01],
+            vec![0x50, 100],
+            vec![0x58, 100],
+        ])
+    );
+}
+
+#[test]
+fn credit_balance_fields_are_pinned() {
+    // organization_id=1, balance_cents=2(varint), monthly_spend_cap_cents=3(varint).
+    let bal = bl::CreditBalance { organization_id: "o".into(), balance_cents: 500, monthly_spend_cap_cents: 10000 };
+    assert_eq!(bal.encode_to_vec(), cat(&[s(0x0a, "o"), vec![0x10, 0xf4, 0x03], vec![0x18, 0x90, 0x4e]]));
+}
+
+// ---------------------------------------------------------------------------
 // The RPC surface: removing or renaming a method is as breaking as renumbering.
 // ---------------------------------------------------------------------------
 
@@ -299,4 +415,154 @@ fn account_internal_keeps_the_rbac_rpcs_and_drops_the_circular_one() {
     }
     // ais_auth must not call back into RunpodManager (which calls ais_auth).
     assert!(!m.iter().any(|x| x == "GetSessionProject"));
+}
+
+#[test]
+fn billing_admin_service_rpc_surface_is_pinned() {
+    assert_eq!(
+        methods("BillingAdminService"),
+        [
+            "CancelSubscription",
+            "CreateOrUpgradeSubscription",
+            "DebitCredit",
+            "GetCreditBalance",
+            "GetOrganizationBillingStatus",
+            "GetSubscription",
+            "ListInvoices",
+            "PreflightCreditCheck",
+            "RecordOverageUsage",
+            "ScheduleDowngrade",
+            "TopUpCredit",
+        ]
+    );
+}
+
+#[test]
+fn billing_service_rpc_surface_is_unchanged_by_the_admin_service_addition() {
+    // BillingAdminService is a second service in the same file -- confirms
+    // the original product-agnostic BillingService's own surface wasn't
+    // touched while adding it.
+    assert_eq!(
+        methods("BillingService"),
+        [
+            "CancelPaymentIntent",
+            "CreatePaymentIntent",
+            "GetPaymentIntent",
+            "HandleStripeWebhook",
+            "WatchPaymentIntent",
+        ]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// domains.proto
+// ---------------------------------------------------------------------------
+
+#[test]
+fn create_order_request_fields_are_pinned() {
+    let bytes = cat(&[
+        s(0x0a, "at"),  // access_token = 1
+        s(0x12, "q"),   // quote_id = 2
+        s(0x1a, "o"),   // organization_id = 3
+        s(0x22, "r"),   // runner_id = 4
+        s(0x2a, "e"),   // invite_email = 5
+        s(0x32, "el"),  // elevated_token = 6
+    ]);
+    let m = dom::CreateOrderRequest::decode(bytes.as_slice()).unwrap();
+    assert_eq!(m.access_token, "at");
+    assert_eq!(m.quote_id, "q");
+    assert_eq!(m.organization_id, "o");
+    assert_eq!(m.runner_id, "r");
+    assert_eq!(m.invite_email, "e");
+    assert_eq!(m.elevated_token, "el");
+}
+
+#[test]
+fn backend_static_form_fields_are_pinned() {
+    // node_id = 1, port = 2 (varint), host = 3, tls = 4, insecure_skip_verify = 5.
+    let bytes = cat(&[
+        s(0x0a, "n"),
+        vec![0x10, 0x50],
+        s(0x1a, "h"),
+        vec![0x20, 0x01],
+        vec![0x28, 0x01],
+    ]);
+    let m = dom::Backend::decode(bytes.as_slice()).unwrap();
+    assert_eq!(m.node_id, "n");
+    assert_eq!(m.port, 80);
+    assert_eq!(m.host, "h");
+    assert!(m.tls);
+    assert!(m.insecure_skip_verify);
+    // Legacy bytes (node form only) still decode, with the additions unset --
+    // an omitted `insecure_skip_verify` must mean "verify".
+    let legacy = cat(&[s(0x0a, "n"), vec![0x10, 0x50]]);
+    let m = dom::Backend::decode(legacy.as_slice()).unwrap();
+    assert!(m.host.is_empty() && !m.tls && !m.insecure_skip_verify);
+}
+
+#[test]
+fn attach_domain_request_additions_keep_legacy_numbers() {
+    // access_token = 1, id_or_fqdn = 2, runner_id = 3, extra_names = 5,
+    // no_http_redirect = 6 (varint) -- none moved when 7-9 were appended.
+    let bytes = cat(&[
+        s(0x0a, "at"),
+        s(0x12, "d.example"),
+        s(0x1a, "r"),
+        s(0x2a, "www.d.example"),
+        vec![0x30, 0x01],
+    ]);
+    let m = dom::AttachDomainRequest::decode(bytes.as_slice()).unwrap();
+    assert_eq!(m.access_token, "at");
+    assert_eq!(m.id_or_fqdn, "d.example");
+    assert_eq!(m.runner_id, "r");
+    assert_eq!(m.extra_names, ["www.d.example"]);
+    assert!(m.no_http_redirect);
+    assert!(m.extra_headers.is_empty() && m.cors.is_none() && m.extra_locations.is_empty());
+}
+
+#[test]
+fn domain_service_rpc_surface_is_pinned() {
+    assert_eq!(
+        methods("DomainService"),
+        [
+            "AddDomain",
+            "ApplyFreeformVhost",
+            "AssignDomain",
+            "AttachDomain",
+            "ConvertVhost",
+            "CreateDnsRecord",
+            "CreateOrder",
+            "DeleteDnsRecord",
+            "DetachDomain",
+            "ForceRenew",
+            "GetDomain",
+            "GetOrder",
+            "InviteDomainMember",
+            "ListAdoptedVhosts",
+            "ListCertificates",
+            "ListDnsRecords",
+            "ListDomainMembers",
+            "ListDomains",
+            "ListFindings",
+            "ListInventory",
+            "ListOrders",
+            "ListReleases",
+            "PublishNow",
+            "QuoteDomain",
+            "RemoveDomain",
+            "RemoveDomainMember",
+            "RescanInventory",
+            "SearchDomains",
+            "UpdateDnsRecord",
+            "ValidateFreeformVhost",
+            "VerifyDomainNow",
+            "WatchDomain",
+        ]
+    );
+}
+
+#[test]
+fn domain_service_no_longer_carries_the_stripe_webhook() {
+    // Stripe handling moved to BillingService; Portal calls that one.
+    assert!(!methods("DomainService").iter().any(|m| m == "HandleStripeWebhook"));
 }

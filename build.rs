@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let here = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
-    let protos = ["secret.proto", "session_manager.proto", "accounts.proto"];
+    let protos = ["secret.proto", "session_manager.proto", "accounts.proto", "billing.proto", "domains.proto"];
     for p in protos {
         println!("cargo:rerun-if-changed={}", here.join(p).display());
     }
