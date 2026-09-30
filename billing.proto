@@ -273,6 +273,10 @@ enum BillingStatus {
   BILLING_STATUS_GRACE_PERIOD = 3;
   BILLING_STATUS_SUSPENDED = 4;
   BILLING_STATUS_DELETED = 5;
+  // The customer cancelled and the paid period ran out. Not a failure
+  // state: it never blocks the org's other purchases, and buying the plan
+  // again starts a fresh period on the same row.
+  BILLING_STATUS_CANCELED = 6;
 }
 
 message Subscription {
