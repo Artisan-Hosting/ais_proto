@@ -453,9 +453,25 @@ fn billing_service_rpc_surface_is_unchanged_by_the_admin_service_addition() {
             "CreatePaymentIntent",
             "GetPaymentIntent",
             "HandleStripeWebhook",
+            "RefundPaymentIntent",
             "WatchPaymentIntent",
         ]
     );
+}
+
+#[test]
+fn get_payment_intent_and_refund_fields_are_pinned() {
+    // GetPaymentIntentRequest: id_or_reference=1, include_client_secret=2 (varint).
+    let req = bl::GetPaymentIntentRequest { id_or_reference: "r".into(), include_client_secret: true };
+    assert_eq!(req.encode_to_vec(), cat(&[s(0x0a, "r"), vec![0x10, 0x01]]));
+
+    // RefundPaymentIntentRequest: id_or_reference=1, reason=2.
+    let req = bl::RefundPaymentIntentRequest { id_or_reference: "r".into(), reason: "x".into() };
+    assert_eq!(req.encode_to_vec(), cat(&[s(0x0a, "r"), s(0x12, "x")]));
+
+    // RefundPaymentIntentResponse: refund_id=1, status=2, amount_cents=3 (varint).
+    let res = bl::RefundPaymentIntentResponse { refund_id: "re".into(), status: "succeeded".into(), amount_cents: 5 };
+    assert_eq!(res.encode_to_vec(), cat(&[s(0x0a, "re"), s(0x12, "succeeded"), vec![0x18, 0x05]]));
 }
 
 // ---------------------------------------------------------------------------
