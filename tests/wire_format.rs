@@ -525,6 +525,51 @@ fn attach_domain_request_additions_keep_legacy_numbers() {
 }
 
 #[test]
+fn add_domain_and_parent_fqdn_fields_are_pinned() {
+    // AddDomainRequest: access_token=1, fqdn=2, organization_id=3, runner_id=4,
+    // backends=5, extra_names=6, no_http_redirect=7 (varint).
+    let req = dom::AddDomainRequest {
+        access_token: "a".into(),
+        fqdn: "d.example".into(),
+        organization_id: "o".into(),
+        runner_id: "r".into(),
+        backends: vec![dom::Backend { node_id: "n".into(), port: 80, ..Default::default() }],
+        extra_names: vec!["www.d.example".into()],
+        no_http_redirect: true,
+    };
+    let backend = cat(&[s(0x0a, "n"), vec![0x10, 0x50]]);
+    assert_eq!(
+        req.encode_to_vec(),
+        cat(&[
+            s(0x0a, "a"),
+            s(0x12, "d.example"),
+            s(0x1a, "o"),
+            s(0x22, "r"),
+            vec![0x2a, backend.len() as u8],
+            backend,
+            s(0x32, "www.d.example"),
+            vec![0x38, 0x01],
+        ])
+    );
+
+    // AddDomainResponse: outcome=3 (varint), notes=4. Appended after
+    // required_records=2, so older readers that stop at 2 are unaffected.
+    let res = dom::AddDomainResponse {
+        outcome: dom::AddDomainOutcome::Provisioned as i32,
+        notes: vec!["n".into()],
+        ..Default::default()
+    };
+    assert_eq!(res.encode_to_vec(), cat(&[vec![0x18, 0x03], s(0x22, "n")]));
+
+    // Domain.parent_fqdn = 17 (two-byte tag: 17 << 3 | 2 = 138 -> 0x8a 0x01),
+    // InventoryEntry.parent_fqdn = 12 (0x62).
+    let d = dom::Domain { parent_fqdn: "p".into(), ..Default::default() };
+    assert_eq!(d.encode_to_vec(), cat(&[vec![0x8a, 0x01], vec![1], b"p".to_vec()]));
+    let e = dom::InventoryEntry { parent_fqdn: "p".into(), ..Default::default() };
+    assert_eq!(e.encode_to_vec(), s(0x62, "p"));
+}
+
+#[test]
 fn domain_service_rpc_surface_is_pinned() {
     assert_eq!(
         methods("DomainService"),
