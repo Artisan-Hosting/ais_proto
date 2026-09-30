@@ -428,6 +428,7 @@ fn billing_admin_service_rpc_surface_is_pinned() {
             "GetCreditBalance",
             "GetOrganizationBillingStatus",
             "GetSubscription",
+            "ListCreditLedger",
             "ListInvoices",
             "PreflightCreditCheck",
             "RecordOverageUsage",
