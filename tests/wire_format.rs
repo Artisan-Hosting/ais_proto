@@ -430,8 +430,11 @@ fn billing_admin_service_rpc_surface_is_pinned() {
             "GetSubscription",
             "ListCreditLedger",
             "ListInvoices",
+            "ListPlans",
+            "ListSubscriptions",
             "PreflightCreditCheck",
             "RecordOverageUsage",
+            "RetryInvoicePayment",
             "ScheduleDowngrade",
             "TopUpCredit",
         ]
