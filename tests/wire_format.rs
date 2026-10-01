@@ -631,3 +631,37 @@ fn domain_service_no_longer_carries_the_stripe_webhook() {
     // Stripe handling moved to BillingService; Portal calls that one.
     assert!(!methods("DomainService").iter().any(|m| m == "HandleStripeWebhook"));
 }
+
+// ---------------------------------------------------------------------------
+// accounts.proto: public self-signup
+// ---------------------------------------------------------------------------
+
+#[test]
+fn signup_messages_are_pinned() {
+    let start = acc::StartSignupRequest {
+        email: "e".into(),
+        display_name: "n".into(),
+        password: "p".into(),
+        captcha_token: "c".into(),
+    };
+    assert_eq!(start.encode_to_vec(), cat(&[s(0x0a, "e"), s(0x12, "n"), s(0x1a, "p"), s(0x22, "c")]));
+    assert_eq!(acc::VerifySignupRequest { token: "t".into() }.encode_to_vec(), s(0x0a, "t"));
+    assert_eq!(
+        acc::ResendSignupRequest { email: "e".into(), captcha_token: "c".into() }.encode_to_vec(),
+        cat(&[s(0x0a, "e"), s(0x12, "c")])
+    );
+    assert_eq!(
+        acc::RenameOrganizationRequest { access_token: "t".into(), name: "n".into() }.encode_to_vec(),
+        cat(&[s(0x0a, "t"), s(0x12, "n")])
+    );
+}
+
+#[test]
+fn organization_info_added_slug_without_moving_anything() {
+    // id=1, name=2, created_at=3 (varint) are unchanged; slug=4 is new.
+    let legacy = cat(&[s(0x0a, "i"), s(0x12, "n"), vec![0x18, 7]]);
+    let m = acc::OrganizationInfo::decode(legacy.as_slice()).unwrap();
+    assert_eq!((m.id.as_str(), m.name.as_str(), m.created_at), ("i", "n", 7));
+    assert!(m.slug.is_empty());
+    assert_eq!(acc::OrganizationInfo { slug: "s".into(), ..Default::default() }.encode_to_vec(), s(0x22, "s"));
+}

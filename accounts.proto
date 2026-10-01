@@ -87,6 +87,19 @@ service AccountInternal {
   // Fail-closed: any error, unknown/revoked credential, or missing grant is
   // `yes = false`. Never elevated -- it is a read-only decision.
   rpc EvaluateServiceAccess(EvaluateServiceAccessRequest) returns (EvaluateServiceAccessResponse);
+
+  // Public self-signup. The first three take no bearer token: the caller has
+  // no account yet. StartSignup and ResendSignup ALWAYS succeed with the same
+  // empty answer whether or not the address already has an account, so they
+  // cannot be used to find out who is registered; what differs is only the
+  // email that is sent. VerifySignup is where the account is created: the user
+  // and a draft organization (they are its Admin) in one step, signed in.
+  // RenameOrganization is the next step for that new Admin: names the draft
+  // organization once and gives it its slug. See ais_auth migrations/0009.
+  rpc StartSignup(StartSignupRequest) returns (Empty);
+  rpc VerifySignup(VerifySignupRequest) returns (TokenPair);
+  rpc ResendSignup(ResendSignupRequest) returns (Empty);
+  rpc RenameOrganization(RenameOrganizationRequest) returns (OrganizationInfo);
 }
 
 message LoginRequest { string email = 1; string password = 2; }
@@ -108,7 +121,8 @@ message ElevateRequest { string access_token = 1; string password = 2; }
 message ElevatedTokenResponse { string elevated_token = 1; int64 expires_in = 2; }
 
 message CreateOrganizationRequest { string elevated_token = 1; string name = 2; }
-message OrganizationInfo { string id = 1; string name = 2; int64 created_at = 3; }
+// slug is the organization's unique address name (lowercase a-z, 0-9, hyphen).
+message OrganizationInfo { string id = 1; string name = 2; int64 created_at = 3; string slug = 4; }
 
 message ListOrganizationsRequest { string access_token = 1; }
 message ListOrganizationsResponse { repeated OrganizationInfo organizations = 1; }
@@ -181,3 +195,12 @@ message RequestServiceSessionResponse { string session_token = 1; int64 expires_
 
 message ResolveServiceIdentityRequest { string elevated_token = 1; string organization_id = 2; string service_name = 3; }
 message ResolveServiceIdentityResponse { string credential_id = 1; }
+
+// --- Public self-signup ---
+
+// captcha_token is the single-use Cap solve token; required whenever the
+// service has captcha configured, ignored otherwise.
+message StartSignupRequest { string email = 1; string display_name = 2; string password = 3; string captcha_token = 4; }
+message VerifySignupRequest { string token = 1; }
+message ResendSignupRequest { string email = 1; string captcha_token = 2; }
+message RenameOrganizationRequest { string access_token = 1; string name = 2; }
