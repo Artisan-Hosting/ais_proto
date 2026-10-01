@@ -198,9 +198,10 @@ message ResolveServiceIdentityResponse { string credential_id = 1; }
 
 // --- Public self-signup ---
 
-// captcha_token is the single-use Cap solve token; required whenever the
-// service has captcha configured, ignored otherwise.
-message StartSignupRequest { string email = 1; string display_name = 2; string password = 3; string captcha_token = 4; }
+// No captcha field: bot protection (Cap) is the dashboard backend's job, and
+// only the dashboard is allowed to reach these RPCs from outside (reverse-proxy
+// allow-list; see docs/operations/SIGNUP_GATING.md).
+message StartSignupRequest { string email = 1; string display_name = 2; string password = 3; reserved 4; }
 message VerifySignupRequest { string token = 1; }
-message ResendSignupRequest { string email = 1; string captcha_token = 2; }
+message ResendSignupRequest { string email = 1; reserved 2; }
 message RenameOrganizationRequest { string access_token = 1; string name = 2; }

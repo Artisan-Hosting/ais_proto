@@ -638,18 +638,10 @@ fn domain_service_no_longer_carries_the_stripe_webhook() {
 
 #[test]
 fn signup_messages_are_pinned() {
-    let start = acc::StartSignupRequest {
-        email: "e".into(),
-        display_name: "n".into(),
-        password: "p".into(),
-        captcha_token: "c".into(),
-    };
-    assert_eq!(start.encode_to_vec(), cat(&[s(0x0a, "e"), s(0x12, "n"), s(0x1a, "p"), s(0x22, "c")]));
+    let start = acc::StartSignupRequest { email: "e".into(), display_name: "n".into(), password: "p".into() };
+    assert_eq!(start.encode_to_vec(), cat(&[s(0x0a, "e"), s(0x12, "n"), s(0x1a, "p")]));
     assert_eq!(acc::VerifySignupRequest { token: "t".into() }.encode_to_vec(), s(0x0a, "t"));
-    assert_eq!(
-        acc::ResendSignupRequest { email: "e".into(), captcha_token: "c".into() }.encode_to_vec(),
-        cat(&[s(0x0a, "e"), s(0x12, "c")])
-    );
+    assert_eq!(acc::ResendSignupRequest { email: "e".into() }.encode_to_vec(), s(0x0a, "e"));
     assert_eq!(
         acc::RenameOrganizationRequest { access_token: "t".into(), name: "n".into() }.encode_to_vec(),
         cat(&[s(0x0a, "t"), s(0x12, "n")])
