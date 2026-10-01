@@ -657,3 +657,12 @@ fn organization_info_added_slug_without_moving_anything() {
     assert!(m.slug.is_empty());
     assert_eq!(acc::OrganizationInfo { slug: "s".into(), ..Default::default() }.encode_to_vec(), s(0x22, "s"));
 }
+
+#[test]
+fn register_project_messages_are_pinned() {
+    assert_eq!(
+        acc::RegisterProjectRequest { access_token: "t".into(), runner_name: "r".into() }.encode_to_vec(),
+        cat(&[s(0x0a, "t"), s(0x12, "r")])
+    );
+    assert_eq!(acc::RegisterProjectResponse { success: true }.encode_to_vec(), vec![0x08, 1]);
+}

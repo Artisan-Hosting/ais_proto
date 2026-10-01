@@ -100,6 +100,14 @@ service AccountInternal {
   rpc VerifySignup(VerifySignupRequest) returns (TokenPair);
   rpc ResendSignup(ResendSignupRequest) returns (Empty);
   rpc RenameOrganization(RenameOrganizationRequest) returns (OrganizationInfo);
+
+  // Customer deploy. Registers a new project (runner) to the CALLER's own
+  // organization with a normal Admin access token -- no password step-up, unlike
+  // AssignRunnerOrg, because it can only ever claim a runner nobody owns yet, and
+  // only for the caller's own org. A runner that already belongs to another
+  // organization (or to nobody, i.e. operator-managed) is refused. Registering a
+  // runner the caller's org already owns succeeds (idempotent).
+  rpc RegisterProject(RegisterProjectRequest) returns (RegisterProjectResponse);
 }
 
 message LoginRequest { string email = 1; string password = 2; }
@@ -205,3 +213,9 @@ message StartSignupRequest { string email = 1; string display_name = 2; string p
 message VerifySignupRequest { string token = 1; }
 message ResendSignupRequest { string email = 1; reserved 2; }
 message RenameOrganizationRequest { string access_token = 1; string name = 2; }
+
+// --- Customer deploy ---
+
+// runner_name is the 8-hex project id. The organization is NEVER taken from the request.
+message RegisterProjectRequest { string access_token = 1; string runner_name = 2; }
+message RegisterProjectResponse { bool success = 1; }
