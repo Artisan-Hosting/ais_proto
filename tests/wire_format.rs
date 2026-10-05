@@ -633,6 +633,78 @@ fn domain_service_no_longer_carries_the_stripe_webhook() {
 }
 
 // ---------------------------------------------------------------------------
+// accounts.proto: GitHub installation RPCs
+// ---------------------------------------------------------------------------
+
+#[test]
+fn github_installation_messages_are_pinned() {
+    // GithubInstallation: installation_id=1, organization_id=2, account_login=3,
+    // account_type=4, created_at=5 (varint).
+    let gi = acc::GithubInstallation {
+        installation_id: 123,
+        organization_id: "o".into(),
+        account_login: "example".into(),
+        account_type: "Organization".into(),
+        created_at: 1000,
+    };
+    assert_eq!(
+        gi.encode_to_vec(),
+        cat(&[
+            vec![0x08, 123],
+            s(0x12, "o"),
+            s(0x1a, "example"),
+            s(0x22, "Organization"),
+            vec![0x28, 0xe8, 0x07],
+        ])
+    );
+
+    // LinkGithubInstallationRequest: access_token=1, installation_id=2, account_login=3, account_type=4.
+    let link = acc::LinkGithubInstallationRequest {
+        access_token: "t".into(),
+        installation_id: 123,
+        account_login: "example".into(),
+        account_type: "Organization".into(),
+    };
+    assert_eq!(
+        link.encode_to_vec(),
+        cat(&[
+            s(0x0a, "t"),
+            vec![0x10, 123],
+            s(0x1a, "example"),
+            s(0x22, "Organization"),
+        ])
+    );
+
+    // ListGithubInstallationsRequest: access_token=1.
+    let list_req = acc::ListGithubInstallationsRequest { access_token: "t".into() };
+    assert_eq!(list_req.encode_to_vec(), s(0x0a, "t"));
+
+    // ListGithubInstallationsResponse: installations=1 (repeated GithubInstallation).
+    let list_resp = acc::ListGithubInstallationsResponse {
+        installations: vec![gi.clone()],
+    };
+    let inner = gi.encode_to_vec();
+    assert_eq!(
+        list_resp.encode_to_vec(),
+        cat(&[vec![0x0a, inner.len() as u8], inner])
+    );
+
+    // UnlinkGithubInstallationRequest: access_token=1, installation_id=2.
+    let unlink = acc::UnlinkGithubInstallationRequest {
+        access_token: "t".into(),
+        installation_id: 123,
+    };
+    assert_eq!(
+        unlink.encode_to_vec(),
+        cat(&[s(0x0a, "t"), vec![0x10, 123]])
+    );
+
+    // UnlinkGithubInstallationResponse: success=1 (varint).
+    let unlink_resp = acc::UnlinkGithubInstallationResponse { success: true };
+    assert_eq!(unlink_resp.encode_to_vec(), vec![0x08, 1]);
+}
+
+// ---------------------------------------------------------------------------
 // accounts.proto: public self-signup
 // ---------------------------------------------------------------------------
 
