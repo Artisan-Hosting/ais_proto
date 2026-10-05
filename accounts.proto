@@ -108,6 +108,15 @@ service AccountInternal {
   // organization (or to nobody, i.e. operator-managed) is refused. Registering a
   // runner the caller's org already owns succeeds (idempotent).
   rpc RegisterProject(RegisterProjectRequest) returns (RegisterProjectResponse);
+
+  // GitHub App installations. ais_auth stores which org owns which
+  // installation; Portal proves installer ownership (C7) before calling
+  // Link. Link/Unlink require the caller to be Admin (or Super) of the org;
+  // List is open to any member. Link is idempotent for the same org and
+  // returns ALREADY_EXISTS if the installation is linked to a different org.
+  rpc LinkGithubInstallation(LinkGithubInstallationRequest) returns (GithubInstallation);
+  rpc ListGithubInstallations(ListGithubInstallationsRequest) returns (ListGithubInstallationsResponse);
+  rpc UnlinkGithubInstallation(UnlinkGithubInstallationRequest) returns (UnlinkGithubInstallationResponse);
 }
 
 message LoginRequest { string email = 1; string password = 2; }
@@ -219,3 +228,16 @@ message RenameOrganizationRequest { string access_token = 1; string name = 2; }
 // runner_name is the 8-hex project id. The organization is NEVER taken from the request.
 message RegisterProjectRequest { string access_token = 1; string runner_name = 2; }
 message RegisterProjectResponse { bool success = 1; }
+
+// --- GitHub App installations ---
+
+message GithubInstallation {
+  int64 installation_id = 1; string organization_id = 2; string account_login = 3;
+  string account_type = 4;   // "User" | "Organization"
+  int64 created_at = 5;
+}
+message LinkGithubInstallationRequest { string access_token = 1; int64 installation_id = 2; string account_login = 3; string account_type = 4; }
+message ListGithubInstallationsRequest { string access_token = 1; }
+message ListGithubInstallationsResponse { repeated GithubInstallation installations = 1; }
+message UnlinkGithubInstallationRequest { string access_token = 1; int64 installation_id = 2; }
+message UnlinkGithubInstallationResponse { bool success = 1; }
