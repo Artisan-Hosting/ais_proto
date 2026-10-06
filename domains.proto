@@ -181,7 +181,8 @@ message Domain {
   repeated Certificate certificates = 14;
   repeated ManagedRecord records = 15;
   bool has_vhost = 16;
-  string parent_fqdn = 17;       // set for a host under another domain's certificate
+  string parent_fqdn = 17;
+  bool published = 19;       // set for a host under another domain's certificate
 }
 
 message Certificate {
