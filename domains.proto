@@ -182,6 +182,7 @@ message Domain {
   repeated ManagedRecord records = 15;
   bool has_vhost = 16;
   string parent_fqdn = 17;       // set for a host under another domain's certificate
+  bool published = 18;   // the domain's current vhost is included in the latest published, non-shadow release
 }
 
 message Certificate {
