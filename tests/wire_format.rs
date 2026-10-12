@@ -586,6 +586,28 @@ fn add_domain_and_parent_fqdn_fields_are_pinned() {
 }
 
 #[test]
+fn domain_published_field_is_pinned() {
+    // Domain.published = 18 (varint, wire type 0): tag = 18 << 3 | 0 = 144 -> 0x90.
+    let m = dom::Domain::decode(&[0x90, 0x01, 0x01][..]).unwrap();
+    assert!(m.published);
+    assert_eq!(m.encode_to_vec(), vec![0x90, 0x01, 0x01]);
+
+    // proto3 default (false) is not written.
+    let m = dom::Domain { published: false, ..Default::default() };
+    assert!(m.encode_to_vec().is_empty());
+
+    // A Domain with fields 1-17 set and published: true round-trips unchanged.
+    let d = dom::Domain {
+        parent_fqdn: "p".into(),
+        published: true,
+        ..Default::default()
+    };
+    let bytes = d.encode_to_vec();
+    assert_eq!(bytes, cat(&[vec![0x8a, 0x01], vec![1], b"p".to_vec(), vec![0x90, 0x01, 0x01]]));
+    assert_eq!(dom::Domain::decode(bytes.as_slice()).unwrap(), d);
+}
+
+#[test]
 fn domain_service_rpc_surface_is_pinned() {
     assert_eq!(
         methods("DomainService"),
