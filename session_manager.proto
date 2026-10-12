@@ -22,6 +22,9 @@ service SessionManager {
   // List all sessions
   rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
 
+  // List the live sessions under one pod prefix, each with whether its caller is heartbeating it
+  rpc ListPrefixSessions(ListPrefixSessionsRequest) returns (ListPrefixSessionsResponse);
+
   // Retrieve persisted logs for a session
   rpc GetSessionLogs(GetSessionLogsRequest) returns (GetSessionLogsResponse);
 
@@ -78,6 +81,10 @@ message DeployTemplateRequest {
   // RBAC Phase 4. Owning project of the session; caller needs Control on it.
   // Field 2 is `reserved` above and must never be reused.
   string project_id = 21;
+  // Optional name prefix for the caller's pods, so apps sharing one provider account keep their own: the pod is named
+  // `<pod_prefix>-session-<session_id>`. Lowercase letters and digits, starting with a letter, at most 16 (default: "sc").
+  // A warm pod is only reused by a request with the same prefix.
+  optional string pod_prefix = 22;
 }
 
 // Provider-agnostic storage mode for runtime workloads.
@@ -128,6 +135,8 @@ message DeployTemplateResponse {
   optional string pod_name = 6;
   uint32 generation_id = 7;
   bool reused_orphan = 8;
+  // The reused pod was stopped and has been started: it is booting, so `tailscale_address` is empty until the session is active.
+  bool resumed_from_stop = 9;
 }
 
 // Request to get session information
@@ -146,11 +155,27 @@ message GetSessionResponse {
 // Request to signal free resources
 message SignalFreeResourcesRequest {
   string session_id = 1;
+  // The caller lets the pod be stopped rather than deleted: it stays running for the orphan window as usual, then is
+  // stopped (billing only its volume) and held for `stop_ttl_secs`; a deploy with the same `orphan_reuse_tag` during either
+  // starts or reuses it, and after the hold it is deleted. Needs an `orphan_reuse_tag` on the session; without one, or when
+  // stopping is off or too dear, the pod is handled as if this were false.
+  bool allow_stop = 2;
+  // How long to hold the stopped pod, seconds (default and ceiling are set in the manager's config).
+  optional uint64 stop_ttl_secs = 3;
 }
 
 // Response for free resources signal
 message SignalFreeResourcesResponse {
   bool success = 1;
+  // What becomes of the pod: "warm_then_stop" (kept running for the orphan window, then held stopped), "warm" (kept running
+  // for the orphan window, then deleted), or "released" (deleted).
+  string outcome = 2;
+  // For "warm_then_stop": what holding the pod stopped for the whole ttl bills (volume only), USD.
+  optional double projected_stopped_cost_usd = 3;
+  // For "warm" and "warm_then_stop": when the orphan window ends (the pod is then deleted, or stopped), Unix seconds.
+  optional int64 expires_at = 4;
+  // Why a requested stop was not done.
+  optional string message = 5;
 }
 
 // Request to send heartbeat
@@ -201,6 +226,26 @@ message ListSessionsResponse {
   int32 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+}
+
+// Request for everything a pod prefix has allocated, so a caller that crashed can find its sessions again.
+message ListPrefixSessionsRequest {
+  // The `pod_prefix` the sessions were deployed with ("sc" when they gave none).
+  string pod_prefix = 1;
+}
+
+// A session under a prefix and whether anyone is using it.
+message PrefixSession {
+  Session session = 1;
+  // The caller is using it: it has a heartbeat inside its timeout and is not freed (warm or stopped awaiting reuse).
+  bool in_use = 2;
+  // The last heartbeat received, Unix seconds (unset when none is tracked, e.g. after the session was freed).
+  optional int64 last_heartbeat = 3;
+}
+
+// Live sessions under the prefix (not archived, stopped, or errored), newest first.
+message ListPrefixSessionsResponse {
+  repeated PrefixSession sessions = 1;
 }
 
 // Request to fetch logs for a session
@@ -300,6 +345,8 @@ message Session {
   uint32 generation_id = 15;
   optional string orphan_reuse_tag = 16;
   optional int64 orphan_expires_at = 17;
+  // Set while the pod is stopped and held for reuse (when it was stopped); `orphan_expires_at` is then when it is deleted.
+  optional int64 pod_stopped_at = 18;
 }
 
 // Resources message
