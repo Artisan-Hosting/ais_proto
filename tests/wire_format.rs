@@ -388,6 +388,7 @@ fn session_manager_rpc_surface_is_pinned() {
             "GetDeployStatus",
             "GetSession",
             "GetSessionLogs",
+            "ListPrefixSessions",
             "ListSessions",
             // Kaelum has always called this; it must stay in the shared file so
             // its client keeps compiling (RunpodManager answers Unimplemented).
