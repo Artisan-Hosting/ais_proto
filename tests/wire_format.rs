@@ -588,6 +588,55 @@ fn add_domain_and_parent_fqdn_fields_are_pinned() {
 }
 
 #[test]
+fn domain_published_is_pinned_at_18() {
+    // Field 18, wire type 0 (varint): tag = 18 << 3 | 0 = 144 -> two-byte varint
+    // 0x90 0x01. Value 1 is the single byte 0x01.
+    let want = cat(&[vec![0x90, 0x01], vec![0x01]]);
+
+    // published: true writes the field.
+    assert_eq!(dom::Domain { published: true, ..Default::default() }.encode_to_vec(), want);
+
+    // published: false is the proto3 default and is not written at all.
+    assert_eq!(dom::Domain { published: false, ..Default::default() }.encode_to_vec(), Vec::<u8>::new());
+
+    // The bytes decode back to published == true with every other field default.
+    let m = dom::Domain::decode(want.as_slice()).unwrap();
+    assert!(m.published);
+    assert_eq!(m.id, "");
+    assert_eq!(m.fqdn, "");
+    assert_eq!(m.runner_id, "");
+    assert!(!m.auto_renew && !m.has_vhost);
+    assert_eq!(m.parent_fqdn, "");
+}
+
+#[test]
+fn domain_published_round_trips() {
+    // Fields 1-17 set plus published: true must survive encode -> decode unchanged.
+    let d = dom::Domain {
+        id: "id".into(),
+        fqdn: "d.example".into(),
+        organization_id: "o".into(),
+        runner_id: "r".into(),
+        source: dom::DomainSource::Purchased as i32,
+        status: dom::DomainStatus::Active as i32,
+        cf_zone_id: "zone".into(),
+        challenge_target: "ct.example".into(),
+        expires_at: 100,
+        auto_renew: true,
+        last_error: "err".into(),
+        created_at: 1,
+        updated_at: 2,
+        certificates: vec![],
+        records: vec![],
+        has_vhost: true,
+        parent_fqdn: "parent.example".into(),
+        published: true,
+    };
+    let encoded = d.encode_to_vec();
+    assert_eq!(dom::Domain::decode(encoded.as_slice()).unwrap(), d);
+}
+
+#[test]
 fn domain_service_rpc_surface_is_pinned() {
     assert_eq!(
         methods("DomainService"),
