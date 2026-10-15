@@ -667,3 +667,62 @@ fn register_project_messages_are_pinned() {
     );
     assert_eq!(acc::RegisterProjectResponse { success: true }.encode_to_vec(), vec![0x08, 1]);
 }
+
+#[test]
+fn github_installation_messages_are_pinned() {
+    // GithubInstallation: installation_id=1(varint), organization_id=2, account_login=3,
+    // account_type=4, created_at=5(varint).
+    let inst = acc::GithubInstallation {
+        installation_id: 42,
+        organization_id: "o".into(),
+        account_login: "octocat".into(),
+        account_type: "Organization".into(),
+        created_at: 100,
+    };
+    assert_eq!(
+        inst.encode_to_vec(),
+        cat(&[
+            vec![0x08, 42],
+            s(0x12, "o"),
+            s(0x1a, "octocat"),
+            s(0x22, "Organization"),
+            vec![0x28, 100],
+        ])
+    );
+
+    // LinkGithubInstallationRequest: access_token=1, installation_id=2(varint), account_login=3, account_type=4.
+    let link = acc::LinkGithubInstallationRequest {
+        access_token: "t".into(),
+        installation_id: 7,
+        account_login: "octocat".into(),
+        account_type: "User".into(),
+    };
+    assert_eq!(
+        link.encode_to_vec(),
+        cat(&[s(0x0a, "t"), vec![0x10, 7], s(0x1a, "octocat"), s(0x22, "User")])
+    );
+
+    // ListGithubInstallationsRequest: access_token=1.
+    assert_eq!(acc::ListGithubInstallationsRequest { access_token: "t".into() }.encode_to_vec(), s(0x0a, "t"));
+
+    // UnlinkGithubInstallationRequest: access_token=1, installation_id=2(varint).
+    assert_eq!(
+        acc::UnlinkGithubInstallationRequest { access_token: "t".into(), installation_id: 9 }.encode_to_vec(),
+        cat(&[s(0x0a, "t"), vec![0x10, 9]])
+    );
+
+    // UnlinkGithubInstallationResponse: success=1(varint).
+    assert_eq!(acc::UnlinkGithubInstallationResponse { success: true }.encode_to_vec(), vec![0x08, 1]);
+}
+
+#[test]
+fn github_installation_rpc_surface_is_pinned() {
+    let m = methods("AccountInternal");
+    for needed in [
+        "LinkGithubInstallation",
+        "ListGithubInstallations",
+        "UnlinkGithubInstallation",
+    ] {
+        assert!(m.iter().any(|x| x == needed), "AccountInternal lost `{needed}`");
+    }
+}
